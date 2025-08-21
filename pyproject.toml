@@ -1,7 +1,7 @@
 [project]
 name = "lattia-dialogue"
 version = "0.1.0"
-description = "L'Attia Dialogue: Peter Attia style chat with an AI Doctor Agent to get to know your health"
+description = "👨🏻‍⚕️🩺 L'Attia Dialogue: Peter Attia–style chat with an AI doctor to better understand your health"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

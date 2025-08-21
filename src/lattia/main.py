@@ -1,23 +1,28 @@
+from contextlib import contextmanager
 from pathlib import Path
-from typing import List
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy.orm import Session
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from .db import Base, engine, get_db
 from . import models, schemas
+from .db import Base, engine, get_db
 from .logic import generate_opening_question, generate_reply
 
 app = FastAPI(title="L'Attia Dialogue")
 
 
 # Create tables on startup
-@app.on_event("startup")
-def on_startup():
+@contextmanager
+def lifespan(app: FastAPI):
+    # Startup
     Base.metadata.create_all(bind=engine)
+
+    yield
+    # Shutdown
+    engine.dispose()
 
 
 # Static
@@ -38,7 +43,7 @@ def serve_chat():
 # ---------------- API ----------------
 
 
-@app.get("/api/profiles", response_model=List[schemas.ProfileOut])
+@app.get("/api/profiles", response_model=list[schemas.ProfileOut])
 def list_profiles(db: Session = Depends(get_db)):
     profiles = (
         db.execute(select(models.Profile).order_by(models.Profile.created_at.desc()))
@@ -164,10 +169,10 @@ def send_message(
     db.commit()
 
     # Mock completion: if user types "done", mark conversation done
-    if payload.content.strip().lower() == "done":
-        p.is_done = True
-        db.add(p)
-        db.commit()
+    # if payload.content.strip().lower() == "done":
+    #     p.is_done = True
+    #     db.add(p)
+    #     db.commit()
 
     # Fetch history in plain dicts for your logic
     msgs = (
@@ -189,11 +194,14 @@ def send_message(
         "health_data": p.health_data,
     }
     llm_output = generate_reply(profile_dict, history, payload.content, p.is_done)
-    reply_text = llm_output.get("reply", "OK")
-    health_update = llm_output.get("health_update")
+
+    if llm_output.is_done:
+        p.is_done = True
+        db.add(p)
+        db.commit()
 
     # Optional health_data deep merge
-    if health_update:
+    if llm_output.health_update:
         import copy
 
         new_hd = copy.deepcopy(p.health_data) if p.health_data else {}
@@ -205,11 +213,13 @@ def send_message(
                 else:
                     a[k] = v
 
-        deep_merge(new_hd, health_update)
+        deep_merge(new_hd, llm_output.health_update)
         p.health_data = new_hd
 
     db.add(p)
-    bot_msg = models.Message(profile_id=p.id, role="assistant", content=reply_text)
+    bot_msg = models.Message(
+        profile_id=p.id, role="assistant", content=llm_output.reply
+    )
     db.add(bot_msg)
     db.commit()
     db.refresh(bot_msg)

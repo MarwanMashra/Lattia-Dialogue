@@ -1,6 +1,6 @@
-from typing import List
 from datetime import datetime
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # Profile
@@ -20,8 +20,7 @@ class ProfileOut(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Messages
@@ -35,13 +34,12 @@ class MessageOut(BaseModel):
     content: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class HistoryOut(BaseModel):
     profile: ProfileOut
-    messages: List[MessageOut]
+    messages: list[MessageOut]
 
 
 # Status and health

@@ -4,8 +4,8 @@
   --glass-strong: rgba(255,255,255,0.12);
   --text: #e7ecf3;
   --muted: #a7b0c0;
-  --accent: #7aa2f7;
-  --accent-2: #00d4ff;
+  --accent: #d4ff94;
+  --accent-2: #7aa2f7;
   --danger: #ff6b6b;
   --success: #6bff95;
   --shadow: 0 10px 30px rgba(0,0,0,0.35);
@@ -42,6 +42,10 @@ a:hover{ text-decoration: underline; }
   border-radius: 12px;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
   box-shadow: var(--shadow);
+  background-image: url('assets/logo.jpeg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 .title{ font-size: 28px; font-weight: 700; letter-spacing: 0.3px; }
 

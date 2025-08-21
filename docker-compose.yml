@@ -5,10 +5,15 @@ services:
     container_name: lattia_api
     environment:
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/lattia
+      HF_HOME: /opt/huggingface
     ports:
       - "8000:8000"
     volumes:
       - ./src:/usr/app/src
+      - hf_cache:/opt/huggingface
+    env_file:
+      - path: ./.env
+        required: true
     depends_on:
       db:
         condition: service_healthy
@@ -32,3 +37,4 @@ services:
 
 volumes:
   pgdata:
+  hf_cache:

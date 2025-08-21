@@ -7,6 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.116.1",
     "gliner>=0.2.21",
+    "openai>=1.100.2",
     "psycopg2-binary>=2.9.10",
     "python-dotenv>=1.1.1",
     "sqlalchemy>=2.0.43",

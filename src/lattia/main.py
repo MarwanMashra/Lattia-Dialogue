@@ -8,8 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import models, schemas
+from .core import generate_opening_question, generate_reply
 from .db import Base, engine, get_db
-from .logic import generate_opening_question, generate_reply
 
 app = FastAPI(title="L'Attia Dialogue")
 

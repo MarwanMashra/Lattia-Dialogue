@@ -2,8 +2,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-# ====== TODO: Replace these with your real logic ======
-
 
 class LLMResponse(BaseModel):
     reply: str

@@ -1,10 +1,29 @@
 [project]
-name = "health-dialogue"
+name = "lattia-dialogue"
 version = "0.1.0"
-description = "Add your description here"
+description = "L'Attia Dialogue: Peter Attia style chat with an AI Doctor Agent to get to know your health"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.116.1",
     "gliner>=0.2.21",
+    "psycopg2-binary>=2.9.10",
+    "python-dotenv>=1.1.1",
+    "sqlalchemy>=2.0.43",
+    "uvicorn[standard]>=0.35.0",
+]
+
+[dependency-groups]
+test = [
+    "pytest>=8.4.1",
+]
+dev = [
+    "pre-commit>=4.3.0",
+]
+
+[tool.uv]
+package = false
+default-groups = [
+    "test",
+    "dev",
 ]

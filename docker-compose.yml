@@ -1,0 +1,34 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: lattia_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: lattia
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d lattia"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    container_name: lattia_api
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/lattia
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src:/usr/app/src
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

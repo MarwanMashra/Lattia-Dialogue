@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>L'Attia Dialogue • Home</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="brand">
+        <div class="logo"></div>
+        <div class="title">L'Attia Dialogue</div>
+      </div>
+      <div class="row">
+        <input id="profileName" class="input" placeholder="New profile name" style="width:240px"/>
+        <button class="btn" id="createBtn">Create profile</button>
+      </div>
+    </div>
+
+    <div class="card" style="padding:16px; margin-bottom:16px;">
+      <input id="search" class="search" placeholder="Search profiles"/>
+    </div>
+
+    <div id="profiles" class="grid"></div>
+  </div>
+
+  <!-- Delete modal -->
+  <div id="deleteModal" class="modal-backdrop">
+    <div class="modal">
+      <h3>Confirm delete</h3>
+      <p>This will permanently remove the profile and its messages.</p>
+      <div class="row" style="margin-top:12px; justify-content:flex-end;">
+        <button class="btn ghost" id="cancelDelete">Cancel</button>
+        <button class="btn danger" id="confirmDelete">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="/static/app.js"></script>
+  <script>
+    let profiles = [];
+    let toDelete = null;
+
+    const profilesEl = document.getElementById('profiles');
+    const searchEl = document.getElementById('search');
+    const toast = document.getElementById('toast');
+    const deleteModal = document.getElementById('deleteModal');
+    const cancelDelete = document.getElementById('cancelDelete');
+    const confirmDelete = document.getElementById('confirmDelete');
+    const createBtn = document.getElementById('createBtn');
+    const profileName = document.getElementById('profileName');
+
+    cancelDelete.onclick = () => { toDelete = null; toggleModal(deleteModal,false); };
+    confirmDelete.onclick = async () => {
+      if(!toDelete) return;
+      try{
+        await apiDelete(`/api/profiles/${toDelete}`);
+        showToast('Profile deleted');
+        await loadProfiles();
+        toggleModal(deleteModal,false);
+      }catch(e){ showToast(e.message || 'Error', true); }
+    };
+
+    createBtn.onclick = async () => {
+      const name = profileName.value.trim();
+      if(!name) return showToast('Please enter a name', true);
+      try{
+        const p = await apiPost('/api/profiles', {name});
+        profileName.value='';
+        showToast('Profile created');
+        window.location.href = `/chat?profile_id=${p.id}`;
+      }catch(e){ showToast(e.message || 'Error creating', true); }
+    };
+
+    searchEl.oninput = () => render(profiles.filter(p => p.name.toLowerCase().includes(searchEl.value.toLowerCase())));
+
+    async function loadProfiles(){
+      const data = await apiGet('/api/profiles');
+      profiles = data;
+      render(profiles);
+    }
+
+    function render(list){
+      profilesEl.innerHTML = '';
+      for(const p of list){
+        const card = document.createElement('div');
+        card.className = 'profile-card card';
+        card.innerHTML = `
+          <div class="row" style="justify-content:space-between">
+            <strong>${escapeHtml(p.name)}</strong>
+            <span class="badge">${p.is_done ? 'Done' : 'In progress'}</span>
+          </div>
+          <div class="row">
+            <button class="btn" data-open="${p.id}">Open</button>
+            <button class="btn ghost" data-delete="${p.id}">Delete</button>
+          </div>
+        `;
+        profilesEl.appendChild(card);
+      }
+      profilesEl.querySelectorAll('button[data-open]').forEach(btn => {
+        btn.onclick = () => window.location.href = `/chat?profile_id=${btn.dataset.open}`;
+      });
+      profilesEl.querySelectorAll('button[data-delete]').forEach(btn => {
+        btn.onclick = () => { toDelete = btn.dataset.delete; toggleModal(deleteModal,true); };
+      });
+    }
+
+    loadProfiles();
+  </script>
+</body>
+</html>

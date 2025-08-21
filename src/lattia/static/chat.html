@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>L'Attia Dialogue • Chat</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="container chat-layout card">
+    <div class="chat-header">
+      <div class="row">
+        <a class="btn ghost" href="/">Home</a>
+        <div class="badge" id="statusBadge">...</div>
+        <span id="statusHelp" class="muted"></span>
+      </div>
+      <div class="row">
+        <button class="btn" id="openDashboard">Open dashboard</button>
+      </div>
+    </div>
+
+    <div id="stream" class="chat-stream"></div>
+
+    <form id="form" class="chat-input">
+      <textarea id="input" class="input" placeholder="Type your message..."></textarea>
+      <button class="btn">Send</button>
+    </form>
+  </div>
+
+  <!-- Dashboard overlay -->
+  <div id="dashboardModal" class="modal-backdrop">
+    <div class="modal">
+      <div class="row" style="justify-content:space-between; align-items:center;">
+        <h3>Profile dashboard</h3>
+        <div class="row">
+          <button class="btn ghost" id="toggleRaw">Raw data</button>
+          <button class="btn ghost" id="closeDashboard">Close</button>
+        </div>
+      </div>
+      <div id="healthContainer" style="margin-top:10px;"></div>
+      <div id="rawWrapper" style="margin-top:12px">
+        <div class="code" id="healthRaw"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="/static/app.js"></script>
+  <script>
+    const toast = document.getElementById('toast');
+    const stream = document.getElementById('stream');
+    const form = document.getElementById('form');
+    const input = document.getElementById('input');
+    const statusBadge = document.getElementById('statusBadge');
+    const openDashboard = document.getElementById('openDashboard');
+    const dashboardModal = document.getElementById('dashboardModal');
+    const closeDashboard = document.getElementById('closeDashboard');
+    const toggleRaw = document.getElementById('toggleRaw');
+    const healthContainer = document.getElementById('healthContainer');
+    const healthRaw = document.getElementById('healthRaw');
+    const rawWrapper = document.getElementById('rawWrapper');
+
+    const url = new URL(window.location.href);
+    const profileId = url.searchParams.get('profile_id');
+    if(!profileId){ window.location.href = '/'; }
+
+    function setStatus(isDone){
+      statusBadge.textContent = isDone ? 'Done' : 'In progress';
+      statusBadge.style.borderColor = isDone ? 'rgba(107,255,149,0.45)' : 'rgba(255,255,255,0.12)';
+      const msgInProgress = 'Please answer the questions so we can assess your health.';
+      const msgDone = 'Interview finished. You can still send messages to add or modify details.';
+      document.getElementById('statusHelp').textContent = isDone ? msgDone : msgInProgress;
+    }
+
+    function renderMessage(role, content){
+      const el = document.createElement('div');
+      el.className = 'message ' + role;
+      el.textContent = content;
+      stream.appendChild(el);
+      stream.scrollTop = stream.scrollHeight;
+    }
+
+    async function loadHistory(){
+      const data = await apiGet(`/api/profiles/${profileId}/history`);
+      setStatus(data.profile.is_done);
+      stream.innerHTML = '';
+      for(const m of data.messages){ renderMessage(m.role, m.content); }
+      if(data.messages.length === 0){
+        const first = await apiPost(`/api/profiles/${profileId}/start`, {});
+        renderMessage(first.role, first.content);
+      }
+      return data.profile;
+    }
+
+    // Enter to send, Shift+Enter for newline
+    input.addEventListener('keydown', (e) => {
+      if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); form.requestSubmit(); }
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const content = input.value.trim();
+      if(!content) return;
+      renderMessage('user', content);
+      input.value = '';
+      try{
+        const m = await apiPost(`/api/profiles/${profileId}/messages`, {content});
+        renderMessage('assistant', m.content);
+        // refresh status in case backend marked it done
+        const prof = await apiGet(`/api/profiles/${profileId}`);
+        setStatus(prof.is_done);
+      }catch(e){
+        showToast(e.message || 'Error', true);
+      }
+    });
+
+    function renderNode(key, value){
+      if (typeof value === 'object' && value !== null){
+        const details = document.createElement('details');
+        details.open = false;
+        const summary = document.createElement('summary');
+        summary.textContent = key;
+        details.appendChild(summary);
+        const children = document.createElement('div');
+        children.className = 'tree-children';
+        for(const k of Object.keys(value)){
+          children.appendChild(renderNode(k, value[k]));
+        }
+        details.appendChild(children);
+        return details;
+      } else {
+        const row = document.createElement('div');
+        row.className = 'kv';
+        const kEl = document.createElement('div'); kEl.className = 'k'; kEl.textContent = key;
+        const vEl = document.createElement('div'); vEl.className = 'v'; vEl.textContent = String(value);
+        row.append(kEl, vEl); return row;
+      }
+    }
+
+    function renderHealthTree(obj, el){
+      el.innerHTML = '';
+      for(const key of Object.keys(obj || {})){
+        el.appendChild(renderNode(key, obj[key]));
+      }
+    }
+
+    async function openDash(){
+      const data = await apiGet(`/api/profiles/${profileId}/health`);
+      healthContainer.innerHTML = '';
+      renderHealthTree(data.health_data, healthContainer);
+      healthRaw.textContent = JSON.stringify(data.health_data, null, 2);
+      toggleModal(dashboardModal, true);
+    }
+
+    openDashboard.onclick = openDash;
+    closeDashboard.onclick = () => toggleModal(dashboardModal,false);
+    toggleRaw.onclick = () => {
+      if(rawWrapper.style.display === 'none'){ rawWrapper.style.display = ''; }
+      else { rawWrapper.style.display = 'none'; }
+    };
+    rawWrapper.style.display = 'none'; // hidden by default
+
+    loadHistory();
+  </script>
+</body>
+</html>

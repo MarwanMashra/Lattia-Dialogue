@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from . import models, schemas
 from .core import generate_opening_question, generate_reply
 from .db import Base, engine, get_db
+from .warmup import run_warmups
 
 app = FastAPI(title="L'Attia Dialogue")
 
@@ -19,6 +20,9 @@ app = FastAPI(title="L'Attia Dialogue")
 def lifespan(app: FastAPI):
     # Startup
     Base.metadata.create_all(bind=engine)
+
+    # warmups
+    run_warmups()
 
     yield
     # Shutdown
@@ -167,12 +171,6 @@ def send_message(
     user_msg = models.Message(profile_id=p.id, role="user", content=payload.content)
     db.add(user_msg)
     db.commit()
-
-    # Mock completion: if user types "done", mark conversation done
-    # if payload.content.strip().lower() == "done":
-    #     p.is_done = True
-    #     db.add(p)
-    #     db.commit()
 
     # Fetch history in plain dicts for your logic
     msgs = (

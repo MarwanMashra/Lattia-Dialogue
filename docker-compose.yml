@@ -1,8 +1,7 @@
-version: "3.9"
 services:
-  api:
+  app:
     build: .
-    container_name: lattia_api
+    container_name: lattia_app
     environment:
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/lattia
       HF_HOME: /opt/huggingface

@@ -23,7 +23,7 @@ Data persists in a Postgres volume named `pgdata`.
 ├── src/
 │   └── lattia/
 │       ├── __init__.py
-│       ├── main.py          # FastAPI app, routes, static
+│       ├── app.py          # FastAPI app, routes, static
 │       ├── db.py            # SQLAlchemy engine and session
 │       ├── models.py        # SQLAlchemy ORM models
 │       ├── schemas.py       # Pydantic models

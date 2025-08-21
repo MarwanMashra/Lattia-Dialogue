@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from .core.pii import get_redactor
 
 
 # Profile
@@ -26,6 +28,12 @@ class ProfileOut(BaseModel):
 # Messages
 class MessageCreate(BaseModel):
     content: str = Field(..., min_length=1)
+
+    @field_validator("content", mode="before")
+    def _redact_content(cls, v: str) -> str:
+        if not isinstance(v, str):
+            return v
+        return get_redactor().redact(v)
 
 
 class MessageOut(BaseModel):

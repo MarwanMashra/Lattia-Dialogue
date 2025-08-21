@@ -1,26 +1,37 @@
 import re
+from functools import cache
 
 from gliner import GLiNER
 
 from .pii_type import PIIType
 
 
+@cache
+def get_redactor() -> "PIIRedactor":
+    redactor = PIIRedactor()
+    # warm up the model
+    redactor.redact(
+        "My name is John Doe and I was born on 1990-01-01, so I'm 30 years old. My phone number is 123-456-7890."
+    )
+    return redactor
+
+
 class PIIRedactor:
-    _allowed_entities: list[PIIType] = [
+    _model_name = "urchade/gliner_multi_pii-v1"
+    _default_allowed_entities: list[PIIType] = [
         PIIType.PERSON,
-        PIIType.DATE_OF_BIRTH,
         PIIType.MEDICATION,
         PIIType.MEDICAL_CONDITION,
         PIIType.USERNAME,
         PIIType.BLOOD_TYPE,
     ]
 
-    def __init__(self, model_name="urchade/gliner_multi_pii-v1"):
-        self.model = GLiNER.from_pretrained(model_name)
+    def __init__(self):
+        self.model = GLiNER.from_pretrained(self._model_name)
 
     def redact(self, text: str, allowed: list[PIIType] | None = None) -> str:
         allowed_set = (
-            set(allowed) if allowed is not None else set(self._allowed_entities)
+            set(allowed) if allowed is not None else set(self._default_allowed_entities)
         )
         to_redact = set(PIIType) - allowed_set
 

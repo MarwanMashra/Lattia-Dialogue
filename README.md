@@ -54,3 +54,21 @@ Data persists in a Postgres volume named `pgdata`.
 - `GET /api/profiles/{profile_id}/health` → health JSON
 - `PUT /api/profiles/{profile_id}/health` → replace health JSON
 - `PATCH /api/profiles/{profile_id}/status` body `{ "is_done": true }` → mark interview done or not
+
+
+# TODO
+- [x] Build the Home page, Chat UI, and Dashboard overlay
+- [x] Implement the FastAPI backend and DB
+- [x] Add PII redaction
+- [x] Add rate bucket limiting
+- [x] Create a CLI chat client for development
+- [ ] Implement the main agent loop with the data models
+- [ ] Ensure the Attia-style of the conversation
+- [ ] Decide when you have enough data on every category, and when to stop the interview
+- [ ] Find a good first question strategy
+- [ ] Add RAG over provided questions and scrapped research content to suggest next questions
+- [ ] Implement the post-interview flow
+- [ ] Check FHIR standards, understand what a FHIR-lite JSON format should look like
+- [ ] Consider GDPR compliance
+- [ ] Add proper README documentation with design decisions
+- [ ] Film Loom video walkthrough

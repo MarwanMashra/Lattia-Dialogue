@@ -23,7 +23,7 @@
 
     <form id="form" class="chat-input">
       <textarea id="input" class="input" placeholder="Type your message..."></textarea>
-      <button class="btn">Send</button>
+      <button class="btn" id="sendBtn">Send</button>
     </form>
   </div>
 
@@ -52,6 +52,7 @@
     const stream = document.getElementById('stream');
     const form = document.getElementById('form');
     const input = document.getElementById('input');
+    const sendBtn = document.getElementById('sendBtn');
     const statusBadge = document.getElementById('statusBadge');
     const openDashboard = document.getElementById('openDashboard');
     const dashboardModal = document.getElementById('dashboardModal');
@@ -93,25 +94,37 @@
       return data.profile;
     }
 
-    // Enter to send, Shift+Enter for newline
+    let sending = false;
+
+    // Enter to send, Shift+Enter for newline, blocked while sending
     input.addEventListener('keydown', (e) => {
+      if(sending) { e.preventDefault(); return; }
       if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); form.requestSubmit(); }
     });
 
+    function setSending(state){
+      sending = state;
+      input.disabled = state;
+      sendBtn.disabled = state;
+    }
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if(sending) return;
       const content = input.value.trim();
       if(!content) return;
       renderMessage('user', content);
       input.value = '';
       try{
+        setSending(true);
         const m = await apiPost(`/api/profiles/${profileId}/messages`, {content});
         renderMessage('assistant', m.content);
-        // refresh status in case backend marked it done
         const prof = await apiGet(`/api/profiles/${profileId}`);
         setStatus(prof.is_done);
       }catch(e){
         showToast(e.message || 'Error', true);
+      }finally{
+        setSending(false);
       }
     });
 

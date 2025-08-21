@@ -1,5 +1,7 @@
-from contextlib import contextmanager
+import time
+from contextlib import asynccontextmanager
 from pathlib import Path
+from threading import Lock
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -12,12 +14,46 @@ from .core import generate_opening_question, generate_reply
 from .db import Base, engine, get_db
 from .warmup import run_warmups
 
-app = FastAPI(title="L'Attia Dialogue")
+
+class TokenBucket:
+    def __init__(self, capacity: int, refill_rate: float):
+        self.capacity = capacity  # max tokens
+        self.refill_rate = refill_rate  # tokens per second
+        self.tokens = capacity
+        self.timestamp = time.monotonic()
+        self.lock = Lock()
+
+    def allow(self) -> bool:
+        with self.lock:
+            now = time.monotonic()
+            elapsed = now - self.timestamp
+            self.timestamp = now
+            # refill
+            self.tokens = min(self.capacity, self.tokens + elapsed * self.refill_rate)
+            if self.tokens >= 1:
+                self.tokens -= 1
+                return True
+            return False
+
+
+_BUCKETS = {}
+_BUCKETS_LOCK = Lock()
+_BUCKET_CAPACITY = 30  # burst up to 10
+_BUCKET_REFILL_RATE = _BUCKET_CAPACITY / 60  # ~10 messages per minute
+
+
+def get_bucket(profile_id: int) -> TokenBucket:
+    with _BUCKETS_LOCK:
+        b = _BUCKETS.get(profile_id)
+        if b is None:
+            b = TokenBucket(_BUCKET_CAPACITY, _BUCKET_REFILL_RATE)
+            _BUCKETS[profile_id] = b
+        return b
 
 
 # Create tables on startup
-@contextmanager
-def lifespan(app: FastAPI):
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     # Startup
     Base.metadata.create_all(bind=engine)
 
@@ -29,6 +65,7 @@ def lifespan(app: FastAPI):
     engine.dispose()
 
 
+app = FastAPI(title="L'Attia Dialogue", lifespan=lifespan)
 # Static
 static_dir = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
@@ -163,6 +200,14 @@ def ensure_opening_message(profile_id: int, db: Session = Depends(get_db)):
 def send_message(
     profile_id: int, payload: schemas.MessageCreate, db: Session = Depends(get_db)
 ):
+    # Rate limit per profile
+    bucket = get_bucket(profile_id)
+    if not bucket.allow():
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded for this profile. Try again shortly.",
+        )
+
     p = db.get(models.Profile, profile_id)
     if not p:
         raise HTTPException(status_code=404, detail="Profile not found")

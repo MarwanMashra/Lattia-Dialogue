@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 
 class LLM:
-    def __init__(self, model_name: str):
+    def __init__(self, model_name: str = "gpt-4.1-2025-04-14"):
         self.model_name = model_name
         if api_key := os.getenv("OPENAI_API_KEY"):
             self.client = OpenAI(api_key=api_key)
@@ -47,7 +47,7 @@ class LLM:
         else:
             raise ValueError("LLM response is not in the expected format.")
 
-    async def send(
+    def send(
         self,
         messages: list[ChatCompletionMessageParam],
         temperature: float = 0.7,

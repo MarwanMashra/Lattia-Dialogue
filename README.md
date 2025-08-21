@@ -71,4 +71,10 @@ Data persists in a Postgres volume named `pgdata`.
 - [ ] Check FHIR standards, understand what a FHIR-lite JSON format should look like
 - [ ] Consider GDPR compliance
 - [ ] Add proper README documentation with design decisions
+- [ ] Ensure people can run it smoothly
 - [ ] Film Loom video walkthrough
+
+
+## Credits
+- [GLiNER PII](https://huggingface.co/urchade/gliner_multi_pii-v1) - for the PII redaction model
+- [GPT-5-Thinking](https://chatgpt.com/?model=gpt-5-thinking) - for helping me vibe code the Frontend

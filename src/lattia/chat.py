@@ -4,8 +4,10 @@ from .core.llm import LLM
 
 
 class CoutryInfo(BaseModel):
-    name: str = Field(..., description="Name of the country")
-    capital: str = Field(..., description="Capital city of the country")
+    """Data model for country information."""
+
+    name: str = Field(..., description="Name of the country, in spanish")
+    capital: str = Field(..., description="Capital city of the country, in arabic")
     population: int = Field(..., description="Population of the country")
     area: float = Field(..., description="Area of the country in square kilometers")
 
@@ -21,13 +23,6 @@ def main():
         messages=[{"role": "user", "content": "Tell me about France."}],
         temperature=0.5,
         max_tokens=500,
-    )
-    print(llm_response)
-
-    llm_response = llm.send(
-        messages=[{"role": "user", "content": "Tell me about France."}],
-        temperature=0.5,
-        max_tokens=10,
     )
     print(llm_response)
 

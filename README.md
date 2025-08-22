@@ -77,4 +77,4 @@ Data persists in a Postgres volume named `pgdata`.
 
 ## Credits
 - [GLiNER PII](https://huggingface.co/urchade/gliner_multi_pii-v1) - for the PII redaction model
-- [GPT-5-Thinking](https://chatgpt.com/?model=gpt-5-thinking) - for helping me vibe code the Frontend
+- [GPT-6 Preview](https://www.youtube.com/watch?v=xvFZjo5PgG0) - for helping me vibe code the Frontend

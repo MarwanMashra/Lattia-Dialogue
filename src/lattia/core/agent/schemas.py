@@ -14,6 +14,7 @@ intake_domain = Literal[
     "medical_history",
     "substance_use",
     "personal_hygiene",
+    "current_health_status",
 ]
 
 ValueType = Literal[
@@ -25,7 +26,12 @@ ValueType = Literal[
     "free_text",
 ]
 
+TO_COLLECT_TOKEN = "to_collect"  # default value before collection
 
+
+# -----------------------------------------------------------------------#
+# ----------------- LLM-facing Intake interview schemas ---------------- #
+# -----------------------------------------------------------------------#
 class IntakeFieldSpec(BaseModel):
     """
     Specification of a single intake field to be collected during an intake session.
@@ -88,15 +94,15 @@ class IntakeFieldSpec(BaseModel):
 
     key: str = Field(
         ...,
-        description="Stable machine key in snake_case, unique within the intake session.",
+        description="Stable machine key in snake_case, unique across all intake domains and within the session.",
     )
     name: str = Field(
         ...,
-        description="Human-readable name for the field, used in UI and reports.",
+        description="Human-readable name for the field, for use in UI and reports.",
     )
     description: str = Field(
         ...,
-        description="A one sentence description of the field, used in UI and reports.",
+        description="A single-sentence statement (not a question) describing what the field represents, for use in UI and reports.",
     )
     domain: intake_domain = Field(
         ...,
@@ -155,12 +161,6 @@ class IntakeValueUpdate(BaseModel):
     """
 
     key: str
-    domain: intake_domain = Field(
-        ...,
-        description=(
-            f"The intake domain this field belongs to. Must be one of: {', '.join(get_args(intake_domain))}."
-        ),
-    )
     value: str = Field(
         ...,
         description=(
@@ -211,8 +211,16 @@ class TurnAnalysis(BaseModel):
         ...,
         description=(
             "Concise reflection, from a functional-medicine physician perspective, on what additional information is important "
-            "to collect next that has not yet been requested. Base this on the latest user response, prior context, "
-            "clinical intuition, and general research knowledge. Target length 30 to 60 words."
+            "to collect next that has not yet been requested, and the plan to follow. Base this on the latest user response, "
+            "prior context, clinical intuition, and general research knowledge. Target length 30 to 60 words."
+        ),
+    )
+    field_requests_to_create: list[str] = Field(
+        default_factory=list,
+        description=(
+            "List of keys for the IntakeFieldRequest items to create, Includes both: "
+            "1. keys for the fields which values were collected in the `value_update_plan` but don't appear in the `Intake Session State` "
+            "2. keys for the new fields based on the reasoning in next_fields_thoughs. "
         ),
     )
 
@@ -247,7 +255,7 @@ class NextFieldSelection(BaseModel):
     )
 
 
-class HealthIntakeTurn(BaseModel):
+class IntakeInterviewTurn(BaseModel):
     """
     Single-turn decision payload for the intake flow.
 
@@ -264,10 +272,7 @@ class HealthIntakeTurn(BaseModel):
     new_fields_to_collect: list[IntakeFieldRequest] = Field(
         default_factory=list,
         description=(
-            "Prioritized list of 0 to 2 IntakeFieldRequest items to collect next. "
-            "Prefer structured types over free_text, for example single_choice, multi_choice, or bucketed_choice. "
-            "When proposing bucketed_choice, define meaningful ranges, for example sleep_hours: <4h, 4–6h, 6–8h, >8h. "
-            "Each request must specify value_type and provide options when applicable."
+            "Prioritized list of 0 to 2 IntakeFieldRequest items to collect next."
         ),
     )
 
@@ -294,16 +299,40 @@ class HealthIntakeTurn(BaseModel):
     )
 
 
+# -----------------------------------------------------------------------#
+# ------------------ Internal Intake interview schemas ----------------- #
+# -----------------------------------------------------------------------#
 class HealthDataEntry(BaseModel):
     """
     One collected piece of information from the interview.
     """
 
+    key: str
     name: str
     description: str
     rationale: str
-    value: str = "not_collected"
+    value: str
     options: dict[str, str] | None = None
+
+
+HealthData = dict[intake_domain, dict[str, HealthDataEntry]]
+
+
+class IntakeField(IntakeFieldRequest):
+    """
+    An intake field being collected in the current intake session, along with its current value.
+    """
+
+    value: str
+
+    @property
+    def is_collected(self) -> bool:
+        """Whether this field has been collected (i.e., has a value other than TO_COLLECT_TOKEN)."""
+        return self.value != TO_COLLECT_TOKEN
+
+    @classmethod
+    def from_request(cls, req: IntakeFieldRequest) -> "IntakeField":
+        return cls(**req.model_dump(), value=TO_COLLECT_TOKEN)
 
 
 class IntakeInterviewState(BaseModel):
@@ -311,30 +340,55 @@ class IntakeInterviewState(BaseModel):
     Container for all collected intake data during an interview.
     """
 
-    health_data: dict[intake_domain, dict[str, HealthDataEntry]] = Field(
-        default_factory=lambda: {d: dict() for d in get_args(intake_domain)}
-    )
+    fields: dict[str, IntakeField] = Field(default_factory=dict)
+    is_done: bool = False
+
+    @property
+    def collected_fields(self) -> list[IntakeField]:
+        """list of fields that have been collected (i.e., have a value other than TO_COLLECT_TOKEN)."""
+        return list(filter(lambda f: f.is_collected, self.fields.values()))
+
+    @property
+    def to_collect_fields(self) -> list[IntakeField]:
+        """list of fields that still need to be collected (i.e., have value TO_COLLECT_TOKEN)."""
+        return list(filter(lambda f: not f.is_collected, self.fields.values()))
 
     def update_from_intake_field_request(self, req: IntakeFieldRequest) -> None:
-        """Create or refresh a HealthDataEntry from an IntakeFieldRequest."""
-        try:
-            spec = req.spec
-            self.health_data[spec.domain][spec.key] = HealthDataEntry(
-                name=spec.name,
-                description=spec.description,
-                rationale=req.rationale,
-                options=spec.options,
-            )
-        except KeyError:
-            print(
-                f"Invalid domain '{req.spec.domain}' or key '{req.spec.key}' in IntakeFieldRequest"
+        if req.spec.key not in self.fields:
+            self.fields[req.spec.key] = IntakeField.from_request(req)
+        else:
+            raise ValueError(
+                f"WARNING: IntakeField key '{req.spec.key}' already exists in current state"
             )
 
     def update_from_intake_value_update(self, upd: IntakeValueUpdate) -> None:
-        """Update or create a HealthDataEntry with a new value based on an IntakeValueUpdate."""
         try:
-            self.health_data[upd.domain][upd.key].value = upd.value
+            field = self.fields[upd.key]
+            field.value = upd.value
         except KeyError:
-            print(
-                f"Warning: Attempted to update non-existent field '{upd.key}' in domain '{upd.domain}'."
+            raise ValueError(
+                f"WARNING: IntakeValueUpdate key '{upd.key}' not found in current state"
             )
+
+    def update_from_turn(self, turn: IntakeInterviewTurn) -> None:
+        for req in turn.new_fields_to_collect:
+            self.update_from_intake_field_request(req)
+        for upd in turn.value_updates:
+            self.update_from_intake_value_update(upd)
+
+    def to_health_data(self) -> HealthData:
+        """Convert the collected fields into user-friendly HealthData format."""
+        data: HealthData = {}
+        for field in self.collected_fields:
+            domain = field.spec.domain
+            if domain not in data:
+                data[domain] = {}
+            data[domain][field.spec.key] = HealthDataEntry(
+                key=field.spec.key,
+                name=field.spec.name,
+                description=field.spec.description,
+                rationale=field.rationale,
+                value=field.value,
+                options=field.spec.options,
+            )
+        return data

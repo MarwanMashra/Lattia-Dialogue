@@ -10,8 +10,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import models, schemas
-from .core import generate_opening_question, generate_reply
 from .db import Base, engine, get_db
+from .generation import generate_opening_question, generate_reply
 from .warmup import run_warmups
 
 

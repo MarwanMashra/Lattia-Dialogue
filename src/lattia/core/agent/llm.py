@@ -1,5 +1,6 @@
 import os
-from typing import Type
+import time
+from typing import Type, cast
 
 from openai import AzureOpenAI, OpenAI
 from openai.types.chat import ChatCompletionMessageParam
@@ -28,17 +29,23 @@ class LLM:
     def send_with_structured_response(
         self,
         response_format: Type[BaseModel],
-        messages: list[ChatCompletionMessageParam],
+        messages: list[dict[str, str]],
         temperature: float = 0.7,
         max_tokens: int = 3000,
+        verbose: bool = False,
     ) -> BaseModel:
+        t0 = time.time()
         completion = self.client.beta.chat.completions.parse(
             model=self.model_name,
-            messages=messages,
+            messages=cast(list[ChatCompletionMessageParam], messages),
             response_format=response_format,
             max_completion_tokens=max_tokens,
             temperature=temperature,
         )
+        if verbose:
+            print(f"LLM response time: {time.time() - t0:.2f} seconds")
+            print(completion.usage)
+
         response = completion.choices[0].message
         if response.parsed:
             return response.parsed

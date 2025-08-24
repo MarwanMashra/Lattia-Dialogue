@@ -141,3 +141,20 @@ class QdrantStore:
             for pid, vec, payload in items
         ]
         self._client.upsert(collection_name=name, points=points)
+
+    def search(
+        self,
+        name: str,
+        query_vector: list[float],
+        top_k: int = 5,
+        score_threshold: float | None = None,
+        query_filter: qm.Filter | None = None,
+    ) -> list[qm.ScoredPoint]:
+        return self._client.search(
+            collection_name=name,
+            query_vector=query_vector,
+            limit=top_k,
+            with_payload=True,
+            score_threshold=score_threshold,
+            query_filter=query_filter,
+        )

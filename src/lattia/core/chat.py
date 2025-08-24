@@ -1,4 +1,9 @@
+import os
+
 from .agent import IntakeInterviewState, LattiaAgent
+from .vector_db.embeddings import OpenAIEmbeddings
+from .vector_db.qdrant_store import QdrantStore
+from .vector_db.retriever import SemanticRetriever
 
 
 def test():
@@ -211,7 +216,16 @@ d = {
 
 
 def run():
-    agent = LattiaAgent()
+    retriever = SemanticRetriever(
+        provider=OpenAIEmbeddings(),
+        collection=os.getenv("QDRANT_COLLECTION", "health_questions"),
+        store=QdrantStore(
+            url=os.getenv("QDRANT_URL", "http://qdrant:6333"),
+            api_key=os.getenv("QDRANT_API_KEY"),
+        ),
+    )
+
+    agent = LattiaAgent(retriever)
     agent_reply = agent.generate_opening_question()
     state = IntakeInterviewState()
     history = [{"role": "assistant", "content": agent_reply}]

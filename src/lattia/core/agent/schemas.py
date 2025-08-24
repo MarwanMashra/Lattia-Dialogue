@@ -357,7 +357,7 @@ class IntakeInterviewState(BaseModel):
         if req.spec.key not in self.fields:
             self.fields[req.spec.key] = IntakeField.from_request(req)
         else:
-            raise ValueError(
+            print(
                 f"WARNING: IntakeField key '{req.spec.key}' already exists in current state"
             )
 

@@ -28,8 +28,8 @@ class LLM:
 
     def send_with_structured_response(
         self,
-        response_format: Type[BaseModel],
         messages: list[dict[str, str]],
+        response_format: Type[BaseModel],
         temperature: float = 0.7,
         max_tokens: int = 3000,
         verbose: bool = False,

@@ -43,6 +43,8 @@ class LattiaAgent:
         history: list[dict[str, str]],
         state: IntakeInterviewState,
     ) -> tuple[str, IntakeInterviewState]:
+        state = deepcopy(state)  # avoid mutating the input state
+
         messages = [
             {"role": "system", "content": self.system_prompt},
             {
@@ -55,13 +57,13 @@ class LattiaAgent:
                 ),
             },
         ]
+
         new_turn = cast(
             IntakeInterviewTurn,
             self.llm.send_with_structured_response(
-                response_format=IntakeInterviewTurn, messages=messages
+                messages=messages, response_format=IntakeInterviewTurn, verbose=True
             ),
         )
-        print("LLM Turn:", new_turn.model_dump())
-        new_state = deepcopy(state)
-        new_state.update_from_turn(new_turn)
-        return new_turn.followup, new_state
+
+        state.update_from_turn(new_turn)
+        return new_turn.followup, state

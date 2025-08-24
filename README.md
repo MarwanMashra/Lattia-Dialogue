@@ -62,7 +62,7 @@ Data persists in a Postgres volume named `pgdata`.
 - [x] Add PII redaction
 - [x] Add rate bucket limiting
 - [x] Create a CLI chat client for development
-- [ ] Implement the main agent loop with the data models
+- [x] Implement the main agent loop with the data models
 - [ ] Ensure the Attia-style of the conversation
 - [ ] Decide when you have enough data on every category, and when to stop the interview
 - [ ] Find a good first question strategy

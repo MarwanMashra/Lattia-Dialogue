@@ -2,7 +2,7 @@ from typing import Literal, get_args
 
 from pydantic import BaseModel, Field
 
-from .utils import pretty_format
+from lattia.core.utils.formatting import pretty_format
 
 intake_domain = Literal[
     "basic_info",

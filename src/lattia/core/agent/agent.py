@@ -2,9 +2,10 @@ from copy import deepcopy
 from pathlib import Path
 from typing import cast
 
+from lattia.core.utils.formatting import format_messages, load_markdown
+
 from .llm import LLM
 from .schemas import IntakeInterviewState, IntakeInterviewTurn
-from .utils import format_messages, load_markdown
 
 _BASE_DIR = Path(__file__).resolve().parent
 

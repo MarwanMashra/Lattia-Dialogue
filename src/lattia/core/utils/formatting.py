@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -110,3 +111,29 @@ def pretty_format(
         return lines
 
     return "\n".join(render(data, 0))
+
+
+def snake_to_camel(s: str) -> str:
+    """Convert snake_case to camelCase."""
+    parts = s.split("_")
+    return parts[0] + "".join(word.capitalize() for word in parts[1:])
+
+
+def camel_to_snake(s: str) -> str:
+    """Convert camelCase to snake_case."""
+    return re.sub(r"([A-Z])", r"_\1", s).lower().lstrip("_")
+
+
+def camel_to_human(s: str) -> str:
+    """
+    Convert camelCase or PascalCase to a human readable Title Case string.
+    Examples:
+      'exerciseDuration' -> 'Exercise Duration'
+      'HTMLResponseCode' -> 'HTML Response Code'
+    """
+    if not s:
+        return s
+    # Insert space between lower/number and Upper, then between acronym and word start
+    spaced = re.sub(r"(?<=[a-z0-9])([A-Z])", r" \1", s)
+    spaced = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", spaced)
+    return spaced.strip().title()

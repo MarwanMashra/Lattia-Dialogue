@@ -5,10 +5,14 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/lattia
       HF_HOME: /opt/huggingface
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: health_questions
+      DATA_FILE: /usr/app/src/lattia/static/health_questions.fr.json
     ports:
       - "8000:8000"
     volumes:
       - ./src:/usr/app/src
+      - ./data:/usr/app/data
       - hf_cache:/opt/huggingface
     env_file:
       - path: ./.env
@@ -16,6 +20,44 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      ingest:
+        condition: service_completed_successfully
+
+  ingest:
+    build: .
+    container_name: lattia_ingest
+    environment:
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: health_questions
+      EMBEDDING_MODEL: text-embedding-3-small
+      DATA_FILE: /usr/app/data/health_questions.fr.json
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    volumes:
+      - ./src:/usr/app/src
+      - ./data:/usr/app/data
+    env_file:
+      - path: ./.env
+        required: true
+    depends_on:
+      qdrant:
+        condition: service_started
+    command: ["python", "-m", "lattia.core.vector_db.ingest"]
+    restart: "no"
+
+  qdrant:
+    image: qdrant/qdrant:v1.15.3
+    container_name: lattia_qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:6333/readyz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
 
   db:
     image: postgres:16-alpine
@@ -37,3 +79,4 @@ services:
 volumes:
   pgdata:
   hf_cache:
+  qdrant_storage:

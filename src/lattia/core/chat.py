@@ -1,5 +1,3 @@
-import json
-
 from .agent import IntakeInterviewState, LattiaAgent
 
 
@@ -214,12 +212,12 @@ d = {
 
 def run():
     agent = LattiaAgent()
-    state = IntakeInterviewState(**d)
     agent_reply = agent.generate_opening_question()
+    state = IntakeInterviewState()
     history = [{"role": "assistant", "content": agent_reply}]
     while True:
-        print("Interview State:")
-        print(json.dumps(state.model_dump(), indent=2))
+        # print("Interview State:")
+        # print(json.dumps(state.model_dump(), indent=2))
         print(f"Agent: {agent_reply}")
         user_input = input("User: ")
         agent_reply, state = agent.generate_reply(user_input, history, state)

@@ -2,6 +2,8 @@ from typing import Literal, get_args
 
 from pydantic import BaseModel, Field
 
+from .utils import pretty_format
+
 intake_domain = Literal[
     "basic_info",
     "lifestyle",
@@ -27,6 +29,11 @@ ValueType = Literal[
 ]
 
 TO_COLLECT_TOKEN = "to_collect"  # default value before collection
+DEFAULT_TURN_TARGET = 5  # default target turns per domain
+MAX_TOTAL_TURN_TARGET = 30  # absolute max overall target turns
+DEFAULT_TOTAL_TURN_TARGET = min(
+    MAX_TOTAL_TURN_TARGET, int(len(get_args(intake_domain)) * DEFAULT_TURN_TARGET * 0.7)
+)  # default overall target turns
 
 
 # -----------------------------------------------------------------------#
@@ -207,6 +214,17 @@ class TurnAnalysis(BaseModel):
         ),
     )
 
+    completeness_review: str = Field(
+        ...,
+        description=(
+            "Concise reflection, 3 to 4 short sentences. First, decide whether to continue with the current domain or mark it "
+            "as complete and move to another, based on factors such as: turns already spent in this domain, soft limits, "
+            "whether the user’s latest answers show concerning signals or reassuring stability, lack of new signals, "
+            "how many turns left for the interview, and how many other domains remain unexplored. Then add a one-sentence reflection on whether to "
+            "consider the interview itself complete, based on soft turn limits and the number of domains already sufficiently covered or marked complete."
+        ),
+    )
+
     next_fields_thoughs: str = Field(
         ...,
         description=(
@@ -269,11 +287,19 @@ class IntakeInterviewTurn(BaseModel):
         description="Structured, turn-level reasoning that drives the rest of this payload.",
     )
 
+    domains_to_mark_complete: list[intake_domain] = Field(
+        default_factory=list,
+        description="Domains to mark complete based on this turn's analysis. Empty list if anylsis concludes no domain is complete.",
+    )
+
+    mark_interview_complete: bool = Field(
+        default=False,
+        description="Set to true to mark the interview complete.",
+    )
+
     new_fields_to_collect: list[IntakeFieldRequest] = Field(
         default_factory=list,
-        description=(
-            "Prioritized list of 0 to 2 IntakeFieldRequest items to collect next."
-        ),
+        description="Prioritized list of 0 to 2 IntakeFieldRequest items to collect next.",
     )
 
     value_updates: list[IntakeValueUpdate] = Field(
@@ -335,23 +361,99 @@ class IntakeField(IntakeFieldRequest):
         return cls(**req.model_dump(), value=TO_COLLECT_TOKEN)
 
 
+class IntakeTurnStats(BaseModel):
+    """
+    Tracks interview progress, overall and per domain.
+    """
+
+    class DomainTurnStat(BaseModel):
+        turns: int = 0
+        target: int = 6
+        tolerance: int = 2
+        completed: bool = False
+
+        def increment(self) -> None:
+            self.turns += 1
+
+        def remaining(self) -> int:
+            return max(self.target - self.turns, 0)
+
+        def summary_row(self) -> str:
+            tag = " [marked as completed]" if self.completed else ""
+            return f"{self.turns} / {self.target} (+/- {self.tolerance}){tag}"
+
+    # Overall counters
+    total_turns: int = 0
+    total_target: int = DEFAULT_TOTAL_TURN_TARGET  # adjust as you like
+
+    domain_stats: dict[intake_domain, DomainTurnStat] = Field(
+        default_factory=lambda: {
+            d: IntakeTurnStats.DomainTurnStat() for d in get_args(intake_domain)
+        }
+    )
+
+    def update(self, domain: intake_domain) -> None:
+        """Increment overall turns and the counter for the given domain."""
+        self.total_turns += 1
+        self.domain_stats[domain].increment()
+
+    def mark_completed(self, domain: intake_domain) -> None:
+        """Mark a domain as completed."""
+        self.domain_stats[domain].completed = True
+
+    def total_turns_left(self) -> int:
+        return max(self.total_target - self.total_turns, 0)
+
+    @property
+    def summary(self) -> str:
+        """
+        Return a human readable multi line summary, for example:
+
+        - Total turns spent: 7
+        - Total turns left: 13
+        - Turns count per domain
+          - sleep 3 / 10 (+/- 3)
+          - nutrition 2 / 6 (+/- 2) [completed]
+          - mental_health 2 / 6 (+/- 2)
+        """
+        lines = []
+        lines.append(f"- Total turns spent: {self.total_turns}")
+        lines.append(f"- Total turns left: {self.total_turns_left()}")
+        lines.append("- Turns count per domain")
+        for domain in get_args(intake_domain):
+            stat = self.domain_stats[domain]
+            lines.append(f"  - {domain} {stat.summary_row()}")
+        return "\n".join(lines)
+
+
 class IntakeInterviewState(BaseModel):
     """
     Container for all collected intake data during an interview.
     """
 
     fields: dict[str, IntakeField] = Field(default_factory=dict)
+    stats: IntakeTurnStats = Field(default_factory=IntakeTurnStats, init=False)
     is_done: bool = False
 
     @property
-    def collected_fields(self) -> list[IntakeField]:
-        """list of fields that have been collected (i.e., have a value other than TO_COLLECT_TOKEN)."""
-        return list(filter(lambda f: f.is_collected, self.fields.values()))
+    def collected_fields_str(self) -> str:
+        """A formatted YAML-like string of only the fields that have been collected so far."""
+        collected_fields = dict(
+            filter(lambda item: item[1].is_collected, self.fields.items())
+        )
+        return pretty_format(
+            {f.spec.key: f.model_dump() for f in collected_fields.values()}
+        )
 
     @property
-    def to_collect_fields(self) -> list[IntakeField]:
-        """list of fields that still need to be collected (i.e., have value TO_COLLECT_TOKEN)."""
-        return list(filter(lambda f: not f.is_collected, self.fields.values()))
+    def to_collect_fields_str(self) -> str:
+        """A formatted YAML-like string of only the fields that still need to be collected."""
+        to_collect_fields = dict(
+            filter(lambda item: not item[1].is_collected, self.fields.items())
+        )
+        return pretty_format(
+            {f.spec.key: f.model_dump() for f in to_collect_fields.values()}
+        )
 
     def update_from_intake_field_request(self, req: IntakeFieldRequest) -> None:
         if req.spec.key not in self.fields:
@@ -373,8 +475,17 @@ class IntakeInterviewState(BaseModel):
     def update_from_turn(self, turn: IntakeInterviewTurn) -> None:
         for req in turn.new_fields_to_collect:
             self.update_from_intake_field_request(req)
+
         for upd in turn.value_updates:
             self.update_from_intake_value_update(upd)
+
+        self.stats.update(turn.next_field_selection.domain)
+
+        for domain in set(turn.domains_to_mark_complete):
+            self.stats.mark_completed(domain)
+
+        if turn.mark_interview_complete:
+            self.is_done = True
 
     def to_health_data(self) -> HealthData:
         """Convert the collected fields into user-friendly HealthData format."""

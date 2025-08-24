@@ -9,13 +9,16 @@ from .utils import format_messages, load_markdown
 _BASE_DIR = Path(__file__).resolve().parent
 
 USER_PROMPT = """
-# Intake Session State
+# Intake Interview Session State
 
-## Collected Fields (could be updated)
+## Collected Fields (could still be updated)
 {collected_fields}
 
-## To Be Collected Fields
+## To Be Collected Fields (avoid creating duplicates)
 {to_collect_fields}
+
+## Session Progress (watch time, adjust pace)
+{turn_stats_summary}
 
 # Conversation History
 {formatted_history}
@@ -28,6 +31,7 @@ USER_PROMPT = """
 class LattiaAgent:
     prompt_filename: str = "proactive_interview_agent.md"
     model_name: str = "gpt-4.1-2025-04-14"
+    history_window: int = 10  # how many previous messages to keep in context
 
     def __init__(self):
         self.llm = LLM(self.model_name)
@@ -45,6 +49,7 @@ class LattiaAgent:
     ) -> tuple[str, IntakeInterviewState]:
         state = deepcopy(state)  # avoid mutating the input state
 
+        history = history[-self.history_window * 2 :]
         messages = [
             {"role": "system", "content": self.system_prompt},
             {
@@ -52,11 +57,22 @@ class LattiaAgent:
                 "content": USER_PROMPT.format(
                     formatted_history=format_messages(history),
                     user_query=user_query,
-                    collected_fields=state.collected_fields,
-                    to_collect_fields=state.to_collect_fields,
+                    collected_fields=state.collected_fields_str,
+                    to_collect_fields=state.to_collect_fields_str,
+                    turn_stats_summary=state.stats.summary,
                 ),
             },
         ]
+        print(self.system_prompt)
+        print(
+            USER_PROMPT.format(
+                formatted_history=format_messages(history),
+                user_query=user_query,
+                collected_fields=state.collected_fields_str,
+                to_collect_fields=state.to_collect_fields_str,
+                turn_stats_summary=state.stats.summary,
+            )
+        )
 
         new_turn = cast(
             IntakeInterviewTurn,
@@ -64,6 +80,7 @@ class LattiaAgent:
                 messages=messages, response_format=IntakeInterviewTurn, verbose=True
             ),
         )
+        print("LLM response:", new_turn)
 
         state.update_from_turn(new_turn)
         return new_turn.followup, state

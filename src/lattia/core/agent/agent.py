@@ -14,32 +14,10 @@ from .schemas import IntakeInterviewState, IntakeInterviewTurn
 
 _BASE_DIR = Path(__file__).resolve().parent
 
-USER_PROMPT = """
-# Intake Interview Session State
-
-## Collected Fields (could still be updated)
-{collected_fields}
-
-## To Be Collected Fields (avoid creating duplicates)
-{to_collect_fields}
-
-## Session Progress (watch time, adjust pace)
-{turn_stats_summary}
-
-# Retrieved Similar Questions (examples for inspiration when relevant)
-The following questions were retrieved using semantic search; they may or may not be relevant.
-{relevant_questions}
-
-# Conversation History
-{formatted_history}
-
-# Last User query:
-{user_query}
-"""
-
 
 class LattiaAgent:
-    prompt_filename: str = "proactive_interview_agent.md"
+    system_prompt_filename: str = "proactive_interview_agent.md"
+    user_message_filename: str = "user_message.md"
     model_name: str = "gpt-4.1-2025-04-14"
     conversation_history_window: int = 10
 
@@ -49,7 +27,12 @@ class LattiaAgent:
 
     def __init__(self, retriever: SemanticRetriever | None = None):
         self.llm = LLM(self.model_name)
-        self.system_prompt = load_markdown(_BASE_DIR / "prompts" / self.prompt_filename)
+        self.system_prompt = load_markdown(
+            _BASE_DIR / "prompts" / self.system_prompt_filename
+        )
+        self.user_message = load_markdown(
+            _BASE_DIR / "prompts" / self.user_message_filename
+        )
         self.retriever = retriever
 
     def generate_opening_question(self) -> str:
@@ -69,7 +52,7 @@ class LattiaAgent:
             {"role": "system", "content": self.system_prompt},
             {
                 "role": "user",
-                "content": USER_PROMPT.format(
+                "content": self.user_message.format(
                     formatted_history=format_messages(history),
                     user_query=user_query,
                     collected_fields=state.collected_fields_str,
@@ -83,7 +66,7 @@ class LattiaAgent:
         ]
         print(self.system_prompt)
         print(
-            USER_PROMPT.format(
+            self.user_message.format(
                 formatted_history=format_messages(history),
                 user_query=user_query,
                 collected_fields=state.collected_fields_str,

@@ -137,3 +137,13 @@ def camel_to_human(s: str) -> str:
     spaced = re.sub(r"(?<=[a-z0-9])([A-Z])", r" \1", s)
     spaced = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", spaced)
     return spaced.strip().title()
+
+
+def snake_to_human(s: str) -> str:
+    """
+    Convert snake_case to a human readable Title Case string.
+    Example:
+      'exercise_duration' -> 'Exercise Duration'
+    """
+    camel = snake_to_camel(s)
+    return camel_to_human(camel)

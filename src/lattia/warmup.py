@@ -7,4 +7,6 @@ def run_warmups() -> None:
     doesn't pay the cost.
     """
     # Warm up PII redactor
+    print("Initializing PII redactor...")
     _ = get_redactor()
+    print("PII redactor initialized.")

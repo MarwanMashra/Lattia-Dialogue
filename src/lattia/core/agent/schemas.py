@@ -436,24 +436,19 @@ class IntakeInterviewState(BaseModel):
     is_done: bool = False
 
     @property
-    def collected_fields_str(self) -> str:
-        """A formatted YAML-like string of only the fields that have been collected so far."""
-        collected_fields = dict(
-            filter(lambda item: item[1].is_collected, self.fields.items())
-        )
-        return pretty_format(
-            {f.spec.key: f.model_dump() for f in collected_fields.values()}
-        )
+    def collected_fields(self) -> dict[str, IntakeField]:
+        """Fields that have been collected (i.e., have a value other than TO_COLLECT_TOKEN)."""
+        return dict(filter(lambda item: item[1].is_collected, self.fields.items()))
 
     @property
-    def to_collect_fields_str(self) -> str:
-        """A formatted YAML-like string of only the fields that still need to be collected."""
-        to_collect_fields = dict(
-            filter(lambda item: not item[1].is_collected, self.fields.items())
-        )
-        return pretty_format(
-            {f.spec.key: f.model_dump() for f in to_collect_fields.values()}
-        )
+    def to_collect_fields(self) -> dict[str, IntakeField]:
+        """Fields that still need to be collected (i.e., have value TO_COLLECT_TOKEN)."""
+        return dict(filter(lambda item: not item[1].is_collected, self.fields.items()))
+
+    @staticmethod
+    def fields_to_str(fields: dict[str, IntakeField]) -> str:
+        """A formatted YAML-like string of the given fields."""
+        return pretty_format({f.spec.key: f.model_dump() for f in fields.values()})
 
     def update_from_intake_field_request(self, req: IntakeFieldRequest) -> None:
         if req.spec.key not in self.fields:

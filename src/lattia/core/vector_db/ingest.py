@@ -123,14 +123,6 @@ def ingest(
     to_insert_ids = incoming_ids - existing_ids
     to_delete_ids = existing_ids - incoming_ids
 
-    print("---------- Summary of ingest ----------")
-    print(f"- Total documents in source: {len(parsed)}")
-    print(f"- Total documents in Qdrant: {len(existing_ids)}")
-    print(f"- Documents to insert: {len(to_insert_ids)}")
-    print(f"- Documents to delete: {len(to_delete_ids)}")
-    print(f"- Total time for ingest: {time.time() - t0:.3f} sec")
-    print("---------------------------------------")
-
     if to_delete_ids:
         store.delete_ids(collection, to_delete_ids)
 
@@ -153,6 +145,14 @@ def ingest(
             for _id, _vec, _p in zip(t_ids, vectors, t_payloads):
                 upserts.append((_id, _vec, _p))
             store.upsert(collection, upserts)
+
+    print("---------- Data Ingestion Summary  ----------")
+    print(f"- Total documents in source: {len(parsed)}")
+    print(f"- Total documents in Qdrant: {len(existing_ids)}")
+    print(f"- Inserted documents: {len(to_insert_ids)}")
+    print(f"- Deleted documents: {len(to_delete_ids)}")
+    print(f"- Total time for ingestion: {time.time() - t0:.3f} sec")
+    print("---------------------------------------")
 
 
 def main(argv: list[str] | None = None) -> int:

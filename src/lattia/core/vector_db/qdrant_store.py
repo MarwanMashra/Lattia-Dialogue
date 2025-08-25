@@ -178,3 +178,31 @@ class QdrantStore:
             score_threshold=score_threshold,
             query_filter=query_filter,
         )
+
+    def search_batch(
+        self,
+        name: str,
+        query_vectors: list[list[float]],
+        top_k: int = 5,
+        score_threshold: float | None = None,
+        query_filter: qm.Filter | None = None,
+    ) -> list[list[qm.ScoredPoint]]:
+        """
+        Batched nearest neighbor search for many query vectors.
+        Returns a list with one list of ScoredPoint per query vector, in order.
+        """
+        if not query_vectors:
+            return []
+
+        requests = [
+            qm.SearchRequest(
+                vector=vec,
+                limit=top_k,
+                with_payload=True,
+                with_vector=False,
+                score_threshold=score_threshold,
+                filter=query_filter,
+            )
+            for vec in query_vectors
+        ]
+        return self._grpc.search_batch(collection_name=name, requests=requests)

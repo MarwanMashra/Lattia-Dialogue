@@ -1,3 +1,4 @@
+import random
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +27,19 @@ _BASE_DIR = Path(__file__).resolve().parent
 class Prompt:
     system_prompt: str
     user_message: str
+
+
+OPENING_QUESTIONS = [
+    "What’s one habit in your daily routine you think has the biggest impact on your health?",
+    "How do you usually move your body during the week?",
+    "When you think about your sleep, what feels most challenging right now?",
+    "What’s been weighing on your mind the most these days?",
+    "If you had to describe your eating style in a few words, how would you put it?",
+    "Who in your life has the most influence on your health choices?",
+    "Looking back, what past medical event has shaped how you view your health?",
+    "How would you describe your relationship with things like alcohol or caffeine?",
+    "What’s one personal routine you never skip, no matter what?",
+]
 
 
 class LattiaAgent:
@@ -59,8 +73,9 @@ class LattiaAgent:
         )
 
     def generate_opening_question(self, user_name) -> str:
-        # TODO: figure out an opening strategy
-        return f"Hello {user_name}! I am your assistant. Can you tell me about your sleep habits?"
+        # TODO: figure out a smarter opening strategy :(
+        intro = f"Hello {user_name}, I’m Lattia, your health intake interviewer. Let’s get started."
+        return f"{intro} {random.choice(OPENING_QUESTIONS)}"
 
     def generate_reply(
         self,

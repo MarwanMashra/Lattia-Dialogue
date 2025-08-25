@@ -21,8 +21,6 @@ from .schemas import (
 
 _BASE_DIR = Path(__file__).resolve().parent
 
-COUNTER = 0
-
 
 @dataclass
 class Prompt:
@@ -72,10 +70,7 @@ class LattiaAgent:
         versbose: bool = False,
     ) -> tuple[str, IntakeInterviewState]:
         state = deepcopy(state)  # avoid mutating the input state
-        global COUNTER
-        if COUNTER > 3:
-            state.is_done = True
-        COUNTER += 1
+
         user_message_placeholders = {
             "user_query": user_query,
             "formatted_history": format_messages(

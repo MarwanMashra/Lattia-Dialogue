@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.scripts]
-chat = "lattia.core.chat:main"
+lattia = "lattia.core.chat:main"
 
 [dependency-groups]
 test = [

@@ -23,7 +23,7 @@ class LattiaAgent:
 
     # Retrieval config
     retrieval_top_k: int = 5  # how many similar questions to retrieve
-    retrieval_score_threshold: float = 0.4  # min similarity score to keep
+    retrieval_score_threshold: float = 0.0  # min similarity score to keep
 
     def __init__(self, retriever: SemanticRetriever | None = None):
         self.llm = LLM(self.model_name)
@@ -72,6 +72,9 @@ class LattiaAgent:
                 collected_fields=state.collected_fields_str,
                 to_collect_fields=state.to_collect_fields_str,
                 turn_stats_summary=state.stats.summary,
+                relevant_questions=self._retrieve_relevant_questions(
+                    self._build_semantic_query(user_query, state)
+                ),
             )
         )
 

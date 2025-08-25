@@ -27,7 +27,7 @@ class OpenAIEmbeddings:
     OpenAI embeddings provider using the specified model.
     """
 
-    model: EmbeddingModel = EmbeddingModel.TEXT_EMBEDDING_3_SMALL
+    model: EmbeddingModel = EmbeddingModel.TEXT_EMBEDDING_3_LARGE
 
     def __init__(self):
         self._client = get_openai_like_client()

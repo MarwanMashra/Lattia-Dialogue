@@ -89,8 +89,8 @@ def ingest(
     batch_size: int = 64,
 ) -> None:
     # Optional: wait until Qdrant reports ready
+    t0 = time.time()
     wait_for_qdrant(os.getenv("QDRANT_URL", "http://qdrant:6333"))
-
     store = QdrantStore(url=qdrant_url, api_key=qdrant_api_key)
     store.ensure_collection(collection, provider.dim, recreate_on_mismatch=True)
     parsed = parse_health_questions(data_path)
@@ -122,6 +122,14 @@ def ingest(
     incoming_ids = set(ids)
     to_insert_ids = incoming_ids - existing_ids
     to_delete_ids = existing_ids - incoming_ids
+
+    print("---------- Summary of ingest ----------")
+    print(f"- Total documents in source: {len(parsed)}")
+    print(f"- Total documents in Qdrant: {len(existing_ids)}")
+    print(f"- Documents to insert: {len(to_insert_ids)}")
+    print(f"- Documents to delete: {len(to_delete_ids)}")
+    print(f"- Total time for ingest: {time.time() - t0:.3f} sec")
+    print("---------------------------------------")
 
     if to_delete_ids:
         store.delete_ids(collection, to_delete_ids)

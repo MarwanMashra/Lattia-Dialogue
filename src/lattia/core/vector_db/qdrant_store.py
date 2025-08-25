@@ -1,22 +1,31 @@
 import os
+import time
 from typing import Any, Iterable, Optional, Set, Tuple
 
-import grpc
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qm
 from qdrant_client.http.exceptions import UnexpectedResponse
 
 
 class QdrantStore:
+    """
+    Control plane over HTTP for stability, data plane over gRPC for speed.
+    Minimal env usage: QDRANT_URL, QDRANT_API_KEY.
+    """
+
     def __init__(self, url: str | None = None, api_key: str | None = None):
-        """
-        Prefer gRPC for speed while keeping REST as a fallback for endpoints
-        not yet supported by gRPC underneath the hood.
-        """
         url = url or os.getenv("QDRANT_URL", "http://qdrant:6333")
         api_key = api_key or os.getenv("QDRANT_API_KEY")
 
-        self._client = QdrantClient(
+        # HTTP client for collection metadata and management
+        self._http = QdrantClient(
+            url=url,
+            api_key=api_key,
+            prefer_grpc=False,
+        )
+
+        # gRPC client for search, upsert, scroll
+        self._grpc = QdrantClient(
             url=url,
             api_key=api_key,
             prefer_grpc=True,
@@ -30,28 +39,14 @@ class QdrantStore:
         recreate_on_mismatch: bool = True,
     ) -> None:
         """
-        Ensure 'name' exists with the expected vector size and distance.
-        If an existing collection mismatches, drop and recreate if allowed.
+        Ensure 'name' exists with expected vector size and distance.
+        If mismatch, drop and recreate when allowed.
         """
-        try:
-            info = self._client.get_collection(name)
-        except UnexpectedResponse as e:
-            # HTTP path: 404 means the collection does not exist, create it
-            status = getattr(e, "status_code", None) or getattr(
-                getattr(e, "response", None), "status_code", None
-            )
-            if status == 404:
-                self._create_collection(name, vector_size, distance)
-                return
-            raise  # some other HTTP error
-        except grpc.RpcError as e:
-            # gRPC path: NOT_FOUND means the collection does not exist, create it
-            if e.code() == grpc.StatusCode.NOT_FOUND:
-                self._create_collection(name, vector_size, distance)
-                return
-            raise  # network errors, permission, etc.
+        info = self._get_collection_info_http(name)
+        if info is None:
+            self._create_collection_http(name, vector_size, distance)
+            return
 
-        # If we reach here, the collection exists. Check params.
         current = self._extract_vector_params(info)
         mismatch = (
             (current is None) or (current[0] != vector_size) or (current[1] != distance)
@@ -59,8 +54,8 @@ class QdrantStore:
 
         if mismatch:
             if recreate_on_mismatch:
-                self._client.delete_collection(name)
-                self._create_collection(name, vector_size, distance)
+                self._delete_collection_http(name)
+                self._create_collection_http(name, vector_size, distance)
             else:
                 dim = current[0] if current else None
                 dist = current[1] if current else None
@@ -69,13 +64,39 @@ class QdrantStore:
                     f"expected dim={vector_size}, distance={distance}."
                 )
 
-    def _create_collection(
+    def _get_collection_info_http(
+        self, name: str, retries: int = 3, base_sleep: float = 0.25
+    ):
+        """
+        Returns CollectionInfo via HTTP, or None if not found.
+        Retries briefly on 502/503/504 during early startup.
+        """
+        attempt = 0
+        while True:
+            try:
+                return self._http.get_collection(name)
+            except UnexpectedResponse as e:
+                status = getattr(e, "status_code", None) or getattr(
+                    getattr(e, "response", None), "status_code", None
+                )
+                if status == 404:
+                    return None
+                if status in (502, 503, 504) and attempt < retries:
+                    attempt += 1
+                    time.sleep(base_sleep * attempt)
+                    continue
+                raise
+
+    def _create_collection_http(
         self, name: str, vector_size: int, distance: qm.Distance
     ) -> None:
-        self._client.create_collection(
+        self._http.create_collection(
             collection_name=name,
             vectors_config=qm.VectorParams(size=vector_size, distance=distance),
         )
+
+    def _delete_collection_http(self, name: str) -> None:
+        self._http.delete_collection(name)
 
     @staticmethod
     def _extract_vector_params(
@@ -91,7 +112,6 @@ class QdrantStore:
             return cfg.size, cfg.distance
 
         if isinstance(cfg, dict):
-            # Named vectors, support the common case of a single named vector
             if len(cfg) == 1:
                 vp = next(iter(cfg.values()))
                 return vp.size, vp.distance
@@ -107,7 +127,7 @@ class QdrantStore:
         next_page: qm.ScrollResult | None = None
         offset = None
         while True:
-            points, next_page = self._client.scroll(
+            points, next_page = self._http.scroll(
                 collection_name=name,
                 limit=batch,
                 with_payload=False,
@@ -126,9 +146,9 @@ class QdrantStore:
         ids = list(ids)
         if not ids:
             return
-        self._client.delete(
+        self._http.delete(
             collection_name=name,
-            points_selector=qm.PointIdsList(points=list(ids)),  # correct selector
+            points_selector=qm.PointIdsList(points=ids),
         )
 
     def upsert(
@@ -140,7 +160,7 @@ class QdrantStore:
             qm.PointStruct(id=pid, vector=vec, payload=payload)
             for pid, vec, payload in items
         ]
-        self._client.upsert(collection_name=name, points=points)
+        self._http.upsert(collection_name=name, points=points)
 
     def search(
         self,
@@ -150,7 +170,7 @@ class QdrantStore:
         score_threshold: float | None = None,
         query_filter: qm.Filter | None = None,
     ) -> list[qm.ScoredPoint]:
-        return self._client.search(
+        return self._grpc.search(
             collection_name=name,
             query_vector=query_vector,
             limit=top_k,

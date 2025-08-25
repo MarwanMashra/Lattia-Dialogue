@@ -220,7 +220,7 @@ def run():
         provider=OpenAIEmbeddings(),
         collection=os.getenv("QDRANT_COLLECTION", "health_questions"),
         store=QdrantStore(
-            url=os.getenv("QDRANT_URL", "http://qdrant:6333"),
+            url=os.getenv("QDRANT_URL", "http://localhost:6333"),
             api_key=os.getenv("QDRANT_API_KEY"),
         ),
     )

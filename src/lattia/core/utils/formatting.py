@@ -1,5 +1,4 @@
 import re
-from pathlib import Path
 from typing import Any, Iterable
 
 
@@ -13,11 +12,6 @@ def format_messages(
         name = user_name if msg["role"] == "user" else agent_name
         formatted_messages.append(f"{name}: {msg['content'].strip()}")
     return "\n".join(formatted_messages)
-
-
-def load_markdown(filename: Path) -> str:
-    with open(filename, "r", encoding="utf-8") as f:
-        return f.read()
 
 
 def pretty_format(

@@ -161,8 +161,8 @@
     async function openDash(){
       const data = await apiGet(`/api/profiles/${profileId}/health`);
       healthContainer.innerHTML = '';
-      renderHealthTree(data.health_data, healthContainer);
-      healthRaw.textContent = JSON.stringify(data.health_data, null, 2);
+      renderHealthTree(data, healthContainer);
+      healthRaw.textContent = JSON.stringify(data, null, 2);
       toggleModal(dashboardModal, true);
     }
 

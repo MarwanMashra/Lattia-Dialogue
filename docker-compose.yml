@@ -78,6 +78,15 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+  adminer:
+    image: adminer
+    container_name: lattia_adminer
+    restart: always
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+
 
 volumes:
   pgdata:

@@ -325,6 +325,39 @@ class IntakeInterviewTurn(BaseModel):
     )
 
 
+class PostIntakeInterviewTurn(BaseModel):
+    """
+    Single-turn payload for the post-intake phase.
+
+    At this stage, the interview is complete. The purpose is to process user-provided
+    updates or corrections: recording any new or updated values, optionally adding
+    new fields when the user introduces relevant information, and providing a short
+    follow-up response to acknowledge or confirm the update.
+    """
+
+    new_fields_to_collect: list[IntakeFieldRequest] = Field(
+        default_factory=list,
+        description="Fields to add when the user provides new relevant information that was not previously collected.",
+    )
+
+    value_updates: list[IntakeValueUpdate] = Field(
+        default_factory=list,
+        description=(
+            "Normalized add or update values parsed from the latest user response. "
+            "Use the special tokens 'prefer_not_to_say', or 'not_sure' when appropriate."
+        ),
+    )
+
+    followup: str = Field(
+        ...,
+        description=(
+            "A brief, natural response to acknowledge the update or correction. "
+            "This should not be a new question, but a short confirmation, reflection, "
+            "or supportive remark (e.g., 'Got it, I’ve updated your exercise frequency to 3x/week.')."
+        ),
+    )
+
+
 # -----------------------------------------------------------------------#
 # ------------------ Internal Intake interview schemas ----------------- #
 # -----------------------------------------------------------------------#
@@ -333,15 +366,16 @@ class HealthDataEntry(BaseModel):
     One collected piece of information from the interview.
     """
 
-    key: str
     name: str
     description: str
     rationale: str
     value: str
-    options: dict[str, str] | None = None
+    options: list[str] | None = None
 
 
-HealthData = dict[intake_domain, dict[str, HealthDataEntry]]
+class InterviewPayload(BaseModel):
+    turns_summary: dict[str, str]
+    health_data: dict[intake_domain, dict[str, HealthDataEntry]]
 
 
 class IntakeField(IntakeFieldRequest):
@@ -467,7 +501,7 @@ class IntakeInterviewState(BaseModel):
                 f"WARNING: IntakeValueUpdate key '{upd.key}' not found in current state"
             )
 
-    def update_from_turn(self, turn: IntakeInterviewTurn) -> None:
+    def update_from_interview_turn(self, turn: IntakeInterviewTurn) -> None:
         for req in turn.new_fields_to_collect:
             self.update_from_intake_field_request(req)
 
@@ -482,19 +516,48 @@ class IntakeInterviewState(BaseModel):
         if turn.mark_interview_complete:
             self.is_done = True
 
-    def to_health_data(self) -> HealthData:
-        """Convert the collected fields into user-friendly HealthData format."""
-        data: HealthData = {}
-        for field in self.collected_fields:
+    def update_from_post_interview_turn(self, turn: PostIntakeInterviewTurn) -> None:
+        for req in turn.new_fields_to_collect:
+            self.update_from_intake_field_request(req)
+
+        for upd in turn.value_updates:
+            self.update_from_intake_value_update(upd)
+
+    @property
+    def payload(self) -> InterviewPayload:
+        """Get the collected fields in user-friendly HealthData format."""
+        health_data = {}
+        for field in self.collected_fields.values():
             domain = field.spec.domain
-            if domain not in data:
-                data[domain] = {}
-            data[domain][field.spec.key] = HealthDataEntry(
-                key=field.spec.key,
+            if domain not in health_data:
+                health_data[domain] = {}
+
+            if field.spec.options:
+                readable_value = ", ".join(
+                    field.spec.options.get(key.strip(), key.strip())
+                    for key in field.value.split(",")
+                )
+            else:
+                readable_value = field.value
+
+            options_list = (
+                list(field.spec.options.values())
+                if field.spec.options is not None
+                else None
+            )
+            health_data[domain][field.spec.key] = HealthDataEntry(
                 name=field.spec.name,
                 description=field.spec.description,
                 rationale=field.rationale,
-                value=field.value,
-                options=field.spec.options,
+                value=readable_value,
+                options=options_list,
             )
-        return data
+
+        turns_summary = {
+            domain: stat.summary_row()
+            for domain, stat in self.stats.domain_stats.items()
+        }
+        return InterviewPayload(
+            turns_summary=turns_summary,
+            health_data=health_data,
+        )

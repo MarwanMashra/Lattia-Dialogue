@@ -10,9 +10,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import models, schemas
+from .core.agent import IntakeInterviewState, InterviewPayload, LattiaAgent
 from .db import Base, engine, get_db
-from .generation import generate_opening_question, generate_reply
 from .warmup import run_warmups
+
+agent = LattiaAgent()
 
 
 class TokenBucket:
@@ -101,7 +103,7 @@ def create_profile(payload: schemas.ProfileCreate, db: Session = Depends(get_db)
     ).scalar_one_or_none()
     if exists:
         raise HTTPException(status_code=409, detail="Profile name already exists")
-    p = models.Profile(name=payload.name, health_data={})
+    p = models.Profile(name=payload.name, interview_state={})
     db.add(p)
     db.commit()
     db.refresh(p)
@@ -156,13 +158,7 @@ def ensure_opening_message(profile_id: int, db: Session = Depends(get_db)):
         .first()
     )
     if not has_any:
-        profile_dict = {
-            "id": p.id,
-            "name": p.name,
-            "is_done": p.is_done,
-            "health_data": p.health_data,
-        }
-        opening = generate_opening_question(profile_dict)
+        opening = agent.generate_opening_question(p.name)
         m = models.Message(profile_id=p.id, role="assistant", content=opening)
         db.add(m)
         db.commit()
@@ -181,13 +177,7 @@ def ensure_opening_message(profile_id: int, db: Session = Depends(get_db)):
         .first()
     )
     if not last_assistant:
-        profile_dict = {
-            "id": p.id,
-            "name": p.name,
-            "is_done": p.is_done,
-            "health_data": p.health_data,
-        }
-        opening = generate_opening_question(profile_dict)
+        opening = agent.generate_opening_question(user_name=p.name)
         m = models.Message(profile_id=p.id, role="assistant", content=opening)
         db.add(m)
         db.commit()
@@ -200,7 +190,7 @@ def ensure_opening_message(profile_id: int, db: Session = Depends(get_db)):
 def send_message(
     profile_id: int, payload: schemas.MessageCreate, db: Session = Depends(get_db)
 ):
-    # Rate limit per profile
+    # rate limit
     bucket = get_bucket(profile_id)
     if not bucket.allow():
         raise HTTPException(
@@ -208,98 +198,75 @@ def send_message(
             detail="Rate limit exceeded for this profile. Try again shortly.",
         )
 
-    p = db.get(models.Profile, profile_id)
-    if not p:
-        raise HTTPException(status_code=404, detail="Profile not found")
+    # one transaction for everything
+    try:
+        with db.begin():  # ensures single commit or rollback
+            # lock the profile row to prevent concurrent writes to interview_state
+            p = (
+                db.execute(
+                    select(models.Profile)
+                    .where(models.Profile.id == profile_id)
+                    .with_for_update()
+                )
+                .scalars()
+                .first()
+            )
+            if not p:
+                raise HTTPException(status_code=404, detail="Profile not found")
 
-    # Save user message
-    user_msg = models.Message(profile_id=p.id, role="user", content=payload.content)
-    db.add(user_msg)
-    db.commit()
+            # save user message
+            user_msg = models.Message(
+                profile_id=p.id, role="user", content=payload.content
+            )
+            db.add(user_msg)
 
-    # Fetch history in plain dicts for your logic
-    msgs = (
-        db.execute(
-            select(models.Message)
-            .where(models.Message.profile_id == profile_id)
-            .order_by(models.Message.created_at.asc())
-        )
-        .scalars()
-        .all()
-    )
-    history = [{"role": m.role, "content": m.content} for m in msgs]
+            # fetch full history
+            msgs = (
+                db.execute(
+                    select(models.Message)
+                    .where(models.Message.profile_id == profile_id)
+                    .order_by(models.Message.created_at.asc())
+                )
+                .scalars()
+                .all()
+            )
+            history = [{"role": str(m.role), "content": str(m.content)} for m in msgs]
 
-    # Run your logic
-    profile_dict = {
-        "id": p.id,
-        "name": p.name,
-        "is_done": p.is_done,
-        "health_data": p.health_data,
-    }
-    llm_output = generate_reply(profile_dict, history, payload.content, p.is_done)
+            # hydrate state, run agent
+            interview_state = IntakeInterviewState.model_validate(p.interview_state)
+            reply, interview_state = agent.generate_reply(
+                user_query=payload.content,
+                history=history,
+                state=interview_state,
+            )
 
-    if llm_output.is_done:
-        p.is_done = True
-        db.add(p)
-        db.commit()
+            # persist updated state
+            p.interview_state = interview_state.model_dump(exclude_none=True)
 
-    # Optional health_data deep merge
-    if llm_output.health_update:
-        import copy
+            # persist assistant message
+            bot_msg = models.Message(profile_id=p.id, role="assistant", content=reply)
+            db.add(bot_msg)
 
-        new_hd = copy.deepcopy(p.health_data) if p.health_data else {}
+            # flush so bot_msg gets its id and timestamps before we return
+            db.flush()
+            db.refresh(bot_msg)
 
-        def deep_merge(a, b):
-            for k, v in b.items():
-                if isinstance(v, dict) and isinstance(a.get(k), dict):
-                    deep_merge(a[k], v)
-                else:
-                    a[k] = v
+        # outside the 'with', transaction has been committed
+        return bot_msg
 
-        deep_merge(new_hd, llm_output.health_update)
-        p.health_data = new_hd
-
-    db.add(p)
-    bot_msg = models.Message(
-        profile_id=p.id, role="assistant", content=llm_output.reply
-    )
-    db.add(bot_msg)
-    db.commit()
-    db.refresh(bot_msg)
-
-    return bot_msg
+    except HTTPException:
+        # let FastAPI handle these
+        raise
+    except Exception as e:
+        # safety net
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Internal error: {e}")
 
 
-@app.get("/api/profiles/{profile_id}/health", response_model=schemas.HealthData)
+@app.get("/api/profiles/{profile_id}/health", response_model=InterviewPayload)
 def get_health(profile_id: int, db: Session = Depends(get_db)):
     p = db.get(models.Profile, profile_id)
     if not p:
         raise HTTPException(status_code=404, detail="Profile not found")
-    return {"health_data": p.health_data or {}}
 
-
-@app.put("/api/profiles/{profile_id}/health", response_model=schemas.HealthData)
-def put_health(
-    profile_id: int, payload: schemas.HealthData, db: Session = Depends(get_db)
-):
-    p = db.get(models.Profile, profile_id)
-    if not p:
-        raise HTTPException(status_code=404, detail="Profile not found")
-    p.health_data = payload.health_data or {}
-    db.add(p)
-    db.commit()
-    return {"health_data": p.health_data or {}}
-
-
-@app.patch("/api/profiles/{profile_id}/status", response_model=schemas.ProfileOut)
-def update_status(
-    profile_id: int, payload: schemas.StatusUpdate, db: Session = Depends(get_db)
-):
-    p = db.get(models.Profile, profile_id)
-    if not p:
-        raise HTTPException(status_code=404, detail="Profile not found")
-    p.is_done = bool(payload.is_done)
-    db.add(p)
-    db.commit()
-    db.refresh(p)
-    return p
+    return IntakeInterviewState.model_validate(p.interview_state).payload

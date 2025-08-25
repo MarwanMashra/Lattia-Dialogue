@@ -226,15 +226,15 @@ def run():
     )
 
     agent = LattiaAgent(retriever)
-    agent_reply = agent.generate_opening_question()
+    agent_reply = agent.generate_opening_question(user_name="Marwan")
     state = IntakeInterviewState()
     history = [{"role": "assistant", "content": agent_reply}]
     while True:
-        # print("Interview State:")
-        # print(json.dumps(state.model_dump(), indent=2))
         print(f"Agent: {agent_reply}")
         user_input = input("User: ")
-        agent_reply, state = agent.generate_reply(user_input, history, state)
+        agent_reply, state = agent.generate_reply(
+            user_input, history, state, versbose=True
+        )
         history.append({"role": "user", "content": user_input})
         history.append({"role": "assistant", "content": agent_reply})
 

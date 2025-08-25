@@ -1,58 +1,86 @@
 from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
 from lattia.core.utils.formatting import (
     camel_to_snake,
     format_messages,
-    load_markdown,
     pretty_format,
     snake_to_human,
 )
 from lattia.core.vector_db.retriever import RelevantQuestion, SemanticRetriever
 
 from .llm import LLM
-from .schemas import IntakeField, IntakeInterviewState, IntakeInterviewTurn
+from .schemas import (
+    IntakeField,
+    IntakeInterviewState,
+    IntakeInterviewTurn,
+    PostIntakeInterviewTurn,
+)
 
 _BASE_DIR = Path(__file__).resolve().parent
 
+COUNTER = 0
+
+
+@dataclass
+class Prompt:
+    system_prompt: str
+    user_message: str
+
 
 class LattiaAgent:
-    system_prompt_filename: str = "proactive_interview_agent.md"
-    user_message_filename: str = "user_message.md"
+    interview_system_prompt_filename: str = "interview_agent.md"
+    interview_user_message_filename: str = "user_message.md"
+    post_system_prompt_filename: str = "post_interview_agent.md"
+    post_user_message_filename: str = "post_user_message.md"
     model_name: str = "gpt-4.1-2025-04-14"
     conversation_history_window: int = 10
 
+    prompts_dir: Path = _BASE_DIR / "prompts"
+
     # Retrieval config
-    retrieval_top_k_per_query: int = 3  # how many similar questions to retrieve
-    retrieval_score_threshold: float = 0.0  # min similarity score to keep
+    retrieval_top_k_per_query: int = 3
+    retrieval_score_threshold: float = 0.0
+
+    def _load_prompt(self, filename: str) -> str:
+        with open(self.prompts_dir / filename, "r", encoding="utf-8") as f:
+            return f.read()
 
     def __init__(self, retriever: SemanticRetriever | None = None):
-        self.llm = LLM(self.model_name)
-        self.system_prompt = load_markdown(
-            _BASE_DIR / "prompts" / self.system_prompt_filename
-        )
-        self.user_message = load_markdown(
-            _BASE_DIR / "prompts" / self.user_message_filename
-        )
         self.retriever = retriever
+        self.llm = LLM(self.model_name)
+        self.interview_prompt = Prompt(
+            system_prompt=self._load_prompt(self.interview_system_prompt_filename),
+            user_message=self._load_prompt(self.interview_user_message_filename),
+        )
+        self.post_interview_prompt = Prompt(
+            system_prompt=self._load_prompt(self.post_system_prompt_filename),
+            user_message=self._load_prompt(self.post_user_message_filename),
+        )
 
-    def generate_opening_question(self) -> str:
+    def generate_opening_question(self, user_name) -> str:
         # TODO: figure out an opening strategy
-        return "Hello! I am your assistant. Can you tell me about your sleep habits?"
+        return f"Hello {user_name}! I am your assistant. Can you tell me about your sleep habits?"
 
     def generate_reply(
         self,
         user_query: str,
         history: list[dict[str, str]],
         state: IntakeInterviewState,
+        versbose: bool = False,
     ) -> tuple[str, IntakeInterviewState]:
         state = deepcopy(state)  # avoid mutating the input state
-
-        history = history[-self.conversation_history_window * 2 :]
+        global COUNTER
+        if COUNTER > 3:
+            state.is_done = True
+        COUNTER += 1
         user_message_placeholders = {
-            "formatted_history": format_messages(history),
             "user_query": user_query,
+            "formatted_history": format_messages(
+                history[-self.conversation_history_window * 2 :]
+            ),
             "collected_fields": IntakeInterviewState.fields_to_str(
                 state.collected_fields
             ),
@@ -62,26 +90,64 @@ class LattiaAgent:
             "turn_stats_summary": state.stats.summary,
             "relevant_questions": self._retrieve_relevant_questions(user_query, state),
         }
-        messages = [
-            {"role": "system", "content": self.system_prompt},
-            {
-                "role": "user",
-                "content": self.user_message.format(**user_message_placeholders),
-            },
-        ]
-        print(self.system_prompt)
-        print(self.user_message.format(**user_message_placeholders))
 
+        if not state.is_done:
+            prompt = self.interview_prompt
+        else:
+            prompt = self.post_interview_prompt
+
+        user_message = prompt.user_message.format(**user_message_placeholders)
+        messages = [
+            {"role": "system", "content": prompt.system_prompt},
+            {"role": "user", "content": user_message},
+        ]
+        if versbose:
+            print(user_message)
+
+        if not state.is_done:
+            return self._handle_interview_turn(state, messages, versbose)
+
+        return self._handle_post_interview_turn(state, messages, versbose)
+
+    def _handle_interview_turn(
+        self,
+        state: IntakeInterviewState,
+        messages: list[dict[str, str]],
+        versbose: bool = False,
+    ) -> tuple[str, IntakeInterviewState]:
         new_turn = cast(
             IntakeInterviewTurn,
             self.llm.send_with_structured_response(
-                messages=messages, response_format=IntakeInterviewTurn, verbose=True
+                messages=messages, response_format=IntakeInterviewTurn, verbose=versbose
             ),
         )
-        print("LLM response:", new_turn)
+        if versbose:
+            print("LLM interview response:", new_turn)
+            print()
 
-        state.update_from_turn(new_turn)
+        state.update_from_interview_turn(new_turn)
         return new_turn.followup, state
+
+    def _handle_post_interview_turn(
+        self,
+        state: IntakeInterviewState,
+        messages: list[dict[str, str]],
+        versbose: bool = False,
+    ) -> tuple[str, IntakeInterviewState]:
+        post_turn = cast(
+            PostIntakeInterviewTurn,
+            self.llm.send_with_structured_response(
+                messages=messages,
+                response_format=PostIntakeInterviewTurn,
+                verbose=versbose,
+            ),
+        )
+        if versbose:
+            print("LLM post-interview response:", post_turn)
+            print()
+
+        state.update_from_post_interview_turn(post_turn)
+        return post_turn.followup, state
 
     @staticmethod
     def _format_retrieved_questions(items: list[RelevantQuestion]) -> str:
@@ -118,8 +184,8 @@ class LattiaAgent:
     ) -> list[str]:
         def format_field(field: IntakeField) -> str:
             return (
-                f"The field {field.spec.name} belongs to the category {snake_to_human(field.spec.domain)}. "
-                f"Analysis: {field.rationale}"
+                f"Anylsis on the field {field.spec.name} that belongs to the "
+                f"category {snake_to_human(field.spec.domain)}: {field.rationale}"
             )
 
         queries = []

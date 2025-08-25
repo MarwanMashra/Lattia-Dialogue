@@ -2,6 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from .core.agent.schemas import IntakeInterviewState
 from .core.pii import get_redactor
 
 
@@ -17,8 +18,7 @@ class ProfileCreate(ProfileBase):
 class ProfileOut(BaseModel):
     id: int
     name: str
-    is_done: bool
-    health_data: dict
+    interview_state: IntakeInterviewState
     created_at: datetime
     updated_at: datetime
 
@@ -48,12 +48,3 @@ class MessageOut(BaseModel):
 class HistoryOut(BaseModel):
     profile: ProfileOut
     messages: list[MessageOut]
-
-
-# Status and health
-class StatusUpdate(BaseModel):
-    is_done: bool
-
-
-class HealthData(BaseModel):
-    health_data: dict

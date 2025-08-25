@@ -1,9 +1,9 @@
 from .agent import LattiaAgent
-from .schemas import HealthData, IntakeInterviewState, IntakeInterviewTurn
+from .schemas import IntakeInterviewState, IntakeInterviewTurn, InterviewPayload
 
 __all__ = [
-    "HealthData",
     "IntakeInterviewTurn",
     "IntakeInterviewState",
     "LattiaAgent",
+    "InterviewPayload",
 ]

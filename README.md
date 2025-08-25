@@ -1,3 +1,5 @@
+![L'Attia Dialogue banner](assets/lattia_banner.png)
+
 # L'Attia Dialogue
 
 Single `docker compose up` gives you:

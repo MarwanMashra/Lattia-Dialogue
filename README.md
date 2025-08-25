@@ -1,4 +1,4 @@
-![L'Attia Dialogue banner](assets/lattia_banner.png)
+![L'Attia Dialogue banner](assets/lattia_banner_2.jpg)
 
 # L'Attia Dialogue
 

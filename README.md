@@ -101,6 +101,24 @@ src/lattia/
 
 This structure separates the **agent logic**, **data access**, **frontend**, and **infrastructure code**, making the project modular and easier to extend.
 
+## Limitations
+
+1. **Latency**
+   Current response time is around **6–10 seconds** per turn.
+   Improvements are possible (see design doc).
+
+2. **Cost**
+   Average cost is about **$0.01 per query**.
+   Optimizations are outlined in the design doc.
+
+3. **Scalability**
+   The application is **stateful** in its current form and cannot scale well horizontally.
+   Stateless redesign would improve scalability (see design doc).
+
+4. **PII handling**
+   PII redaction happens **server-side**. Sensitive information is never stored in the database,
+   but it is still transmitted from client to server before being redacted.
+
 
 # TODO
 - [x] Build the Home page, Chat UI, and Dashboard overlay

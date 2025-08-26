@@ -26,8 +26,12 @@ def run():
         agent_reply, state = agent.generate_reply(
             user_input, history, state, versbose=True
         )
-        history.append({"role": "user", "content": user_input})
-        history.append({"role": "assistant", "content": agent_reply})
+        history.extend(
+            [
+                {"role": "user", "content": user_input},
+                {"role": "assistant", "content": agent_reply},
+            ]
+        )
 
 
 def main():

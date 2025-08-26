@@ -2,60 +2,104 @@
 
 # L'Attia Dialogue
 
-Single `docker compose up` gives you:
-- FastAPI backend on http://localhost:8000
-- Landing page + Chat UI + Dashboard overlay at http://localhost:8000
+L'Attia Dialogue is an AI-powered health intake interview system inspired by Peter Attia’s structured style.
+It conducts adaptive intake conversations across domains like sleep, nutrition, lifestyle, medical history, and more.
+The system can run both as a **web-based chat UI** and as a **CLI tool** for quick terminal-based interaction.
 
-## Quick start
+---
+
+## Quick Start
+
+### 1. Setup
+
+1. **Download curated questions**
+   Download the `questions.json` file containing curated intake questions and place it at:
+
+   ```
+   data/healthquestions.fr.json
+   ```
+
+2. **Environment variables**
+   Create a `.env` file with either:
+
+   * **OpenAI**
+
+     ```
+     OPENAI_API_KEY=your-openai-api-key
+     ```
+
+   * **Azure OpenAI**
+
+     ```
+     AZURE_OPENAI_API_KEY=your-azure-api-key
+     AZURE_OPENAI_ENDPOINT=your-azure-endpoint
+     ```
+
+---
+
+### 2. Run the app (Chat UI)
+
+Build and start the app with Docker Compose:
 
 ```bash
-docker compose up --build
-# open http://localhost:8000
+docker-compose up --build
 ```
 
-Data persists in a Postgres volume named `pgdata`.
+Then access the app at [http://localhost:8000](http://localhost:8000)
 
-## Project layout
+---
+
+### 3. Run the CLI
+
+To run the chat interface directly in your terminal:
+
+1. Make sure the backend services are running:
+
+   ```bash
+   docker-compose up
+   ```
+
+2. Install [uv](https://github.com/astral-sh/uv) (a fast Python package manager).
+
+3. Sync dependencies:
+
+   ```bash
+   uv sync
+   ```
+
+4. Launch the CLI chat:
+
+   ```bash
+   lattia
+   ```
+
+This will start the interactive intake interview directly in your terminal.
+
+## Project Layout
+
+The project is organized as follows:
 
 ```
-.
-├── docker-compose.yml
-├── Dockerfile
-├── requirements.txt
-├── src/
-│   └── lattia/
-│       ├── __init__.py
-│       ├── app.py          # FastAPI app, routes, static
-│       ├── db.py            # SQLAlchemy engine and session
-│       ├── models.py        # SQLAlchemy ORM models
-│       ├── schemas.py       # Pydantic models
-│       ├── logic.py         # TODO spots for your chat logic
-│       └── static/
-│           ├── index.html   # Home: profile list, create, delete
-│           ├── chat.html    # Chat UI + Dashboard overlay
-│           ├── style.css    # Modern, clean styling
-│           └── app.js       # Vanilla JS for UI interactions
-└── README.md
+src/lattia/
+│
+├── core/
+│   ├── agent/         # Agent code: prompts, agent loop, schemas, interview logic
+│   ├── parsers/       # Parsers for curated question files (knowledge base JSON)
+│   ├── pii/           # PII redaction module
+│   ├── utils/         # General utilities
+│   └── vector_db/     # Vector DB client code (Qdrant): embeddings, ingestion, retriever
+│
+├── chat.py            # CLI entry point for running the chat interface
+│
+├── static/            # Frontend assets (HTML, CSS, JavaScript)
+│   ├── app.py         # FastAPI application entry point
+│   ├── db.py          # Database setup: engine, session, declarative base
+│   ├── models.py      # SQLAlchemy models (database tables)
+│   ├── schemas.py     # Pydantic models (FastAPI input/output schemas)
+│   └── warmup.py      # Warm-up tasks when starting the server (models, caches, etc.)
 ```
 
-## Notes
-
-- No npm needed. Pure HTML/CSS/JS served by FastAPI.
-- Replace the TODO sections in `logic.py` with your real logic.
-- API docs at http://localhost:8000/docs
-
-## Default API contract
-
-- `GET /api/profiles` → list profiles
-- `POST /api/profiles` body `{ "name": "Pablo" }` → create
-- `DELETE /api/profiles/{profile_id}` → delete
-- `GET /api/profiles/{profile_id}` → profile details
-- `GET /api/profiles/{profile_id}/history` → chat history
-- `POST /api/profiles/{profile_id}/start` → ensure first bot message exists, return it
-- `POST /api/profiles/{profile_id}/messages` body `{ "content": "hi" }` → append user msg, call your logic, return assistant msg
-- `GET /api/profiles/{profile_id}/health` → health JSON
-- `PUT /api/profiles/{profile_id}/health` → replace health JSON
-- `PATCH /api/profiles/{profile_id}/status` body `{ "is_done": true }` → mark interview done or not
+This structure separates the **agent logic**, **data access**, **frontend**, and **infrastructure code**, making the project modular and easier to extend.
 
 
 # TODO

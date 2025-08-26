@@ -16,7 +16,7 @@ The system can run both as a **web-based chat UI** and as a **CLI tool** for qui
    Download the `questions.json` file containing curated intake questions and place it at:
 
    ```
-   data/healthquestions.fr.json
+   data/health_questions.fr.json
    ```
 
 2. **Environment variables**
